@@ -6,7 +6,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const md5 = require("md5");
 const app = express();
 
 console.log(process.env.API_KEY);
@@ -31,11 +31,6 @@ const userSchema = new mongoose.Schema({
 
 //5b: add secret from .env, use Fields to select field to encrypt
 
-userSchema.plugin(encrypt, {
-  secret: process.env.SECRET,
-  encryptedFields: ["password"],
-});
-
 //5c
 const User = new mongoose.model("User", userSchema);
 
@@ -53,7 +48,7 @@ app.get("/register", function (req, res) {
 app.post("/register", function (req, res) {
   const newUser = new User({
     email: req.body.username,
-    password: req.body.password,
+    password: md5(req.body.password),
   });
 
   //Step 7: save new User and check if theres error during , then render secret
@@ -70,7 +65,7 @@ app.post("/register", function (req, res) {
 //Step 9: Access secret via Login page
 app.post("/login", function (req, res) {
   const username = req.body.username;
-  const password = req.body.password;
+  const password = md5(req.body.password);
   //Step 10 : find in db to check if there is username and password, if so, check to see if there is any err or FoundUser, if err, log err, if FoundUser, find if password mathed, then render secrets
 
   User.findOne({ email: username }, function (err, foundUser) {

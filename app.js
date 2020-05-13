@@ -6,7 +6,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const md5 = require("md5");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 const app = express();
 
 console.log(process.env.API_KEY);
@@ -46,26 +47,29 @@ app.get("/register", function (req, res) {
 });
 //Step 6: When register new user
 app.post("/register", function (req, res) {
-  const newUser = new User({
-    email: req.body.username,
-    password: md5(req.body.password),
-  });
+  //Use bcrypt ,Store hash in your password DB.
+  bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
+    const newUser = new User({
+      email: req.body.username,
+      password: hash,
+    });
 
-  //Step 7: save new User and check if theres error during , then render secret
-  newUser.save(function (err) {
-    if (err) {
-      console.log(err);
-    } else {
-      res.render("secrets"); // this will make /secret page only accessed after registered
-    }
+    //Step 7: save new User and check if theres error during , then render secret
+    newUser.save(function (err) {
+      if (err) {
+        console.log(err);
+      } else {
+        res.render("secrets"); // this will make /secret page only accessed after registered
+      }
+    });
   });
 });
 //Step 8: Check Robo 3T for db
 
-//Step 9: Access secret via Login page
+//Step 9: Access secret page via Login page
 app.post("/login", function (req, res) {
   const username = req.body.username;
-  const password = md5(req.body.password);
+  const password = req.body.password;
   //Step 10 : find in db to check if there is username and password, if so, check to see if there is any err or FoundUser, if err, log err, if FoundUser, find if password mathed, then render secrets
 
   User.findOne({ email: username }, function (err, foundUser) {
@@ -73,9 +77,11 @@ app.post("/login", function (req, res) {
       console.log(err);
     } else {
       if (foundUser) {
-        if (foundUser.password === password) {
-          res.render("secrets");
-        }
+        bcrypt.compare(password, foundUser.password, function (err, result) {
+          if (result) {
+            res.render("secrets");
+          }
+        });
       }
     }
   });

@@ -6,8 +6,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
 const app = express();
 
 console.log(process.env.API_KEY);
@@ -21,19 +22,38 @@ app.use(
   })
 );
 
+//Have to put SESSION right here
+app.use(
+  session({
+    secret: "Our little secret.",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+//Initialize PASSPORT after SESSIOn
+app.use(passport.initialize());
+//Use passport to deal with session
+app.use(passport.session());
+
 //Step 4: connect mongoose
 mongoose.connect("mongodb://localhost:27017/userDB", { useNewUrlParser: true });
-
+mongoose.set("useCreateIndex", true);
 //Step 5: Create a model User
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
 });
 
-//5b: add secret from .env, use Fields to select field to encrypt
+//5b: Add plugin passportlocalmongoose, use to hash and salt pw and to save user to mongodb
+
+userSchema.plugin(passportLocalMongoose);
 
 //5c
 const User = new mongoose.model("User", userSchema);
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 //Step 3:connect routes
 app.get("/", function (req, res) {
@@ -45,44 +65,52 @@ app.get("/login", function (req, res) {
 app.get("/register", function (req, res) {
   res.render("register");
 });
+app.get("/secrets", function (req, res) {
+  if (req.isAuthenticated()) {
+    res.render("secrets");
+  } else {
+    res.redirect("/login");
+  }
+});
+
+//To logout use LOGOUT from PASSPORT
+app.get("/logout", function (req, res) {
+  req.logout();
+  res.redirect("/");
+});
 //Step 6: When register new user
 app.post("/register", function (req, res) {
-  //Use bcrypt ,Store hash in your password DB.
-  bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
-    const newUser = new User({
-      email: req.body.username,
-      password: hash,
-    });
-
-    //Step 7: save new User and check if theres error during , then render secret
-    newUser.save(function (err) {
-      if (err) {
-        console.log(err);
-      } else {
-        res.render("secrets"); // this will make /secret page only accessed after registered
-      }
-    });
+  // register from passport-local npm
+  User.register({ username: req.body.username }, req.body.password, function (
+    err,
+    user
+  ) {
+    if (err) {
+      console.log(err);
+      res.redirect("/register");
+    } else {
+      passport.authenticate("local")(req, res, function () {
+        res.redirect("/secrets");
+      });
+    }
   });
 });
 //Step 8: Check Robo 3T for db
 
 //Step 9: Access secret page via Login page
 app.post("/login", function (req, res) {
-  const username = req.body.username;
-  const password = req.body.password;
-  //Step 10 : find in db to check if there is username and password, if so, check to see if there is any err or FoundUser, if err, log err, if FoundUser, find if password mathed, then render secrets
-
-  User.findOne({ email: username }, function (err, foundUser) {
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password,
+  });
+  //LOGIN method from PASSPORT
+  req.login(user, function (err) {
     if (err) {
       console.log(err);
     } else {
-      if (foundUser) {
-        bcrypt.compare(password, foundUser.password, function (err, result) {
-          if (result) {
-            res.render("secrets");
-          }
-        });
-      }
+      passport.authenticate("local")(req, res, function () {
+        res.redirect("/secrets");
+      });
     }
   });
 });
